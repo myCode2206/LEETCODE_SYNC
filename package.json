@@ -1,0 +1,34 @@
+{
+  "name": "leetcode-github-sync",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Sync accepted LeetCode solutions to an organized GitHub repository and track DSA revisions.",
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "backend",
+    "extension"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "npm run build -w @lcsync/backend && npm run build -w @lcsync/extension",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.4",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.9.9",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^5.0.3"
+  }
+}

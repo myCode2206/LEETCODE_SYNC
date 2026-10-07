@@ -1,0 +1,26 @@
+{
+  "name": "@lcsync/extension",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@lcsync/shared": "^1.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.3"
+  },
+  "scripts": {
+    "dev": "node scripts/build.mjs --watch",
+    "build": "node scripts/build.mjs",
+    "package": "node scripts/build.mjs && node scripts/package.mjs",
+    "icons": "node scripts/generate-icons.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  }
+}
