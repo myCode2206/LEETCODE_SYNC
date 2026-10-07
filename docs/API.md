@@ -40,14 +40,19 @@ requires `Authorization: Bearer <sessionToken>`.
 
 ## Auth
 
-| Method & path                                           | Description                                                             |
-| ------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `GET /auth/github?redirect_uri=&access=public\|private` | Starts OAuth; 302 to GitHub                                             |
-| `GET /auth/github/callback`                             | GitHub redirect target; 302 to the extension with `?code=` or `?error=` |
-| `POST /auth/token` `{code}`                             | Exchanges the one-time code for a session → `SessionDto`                |
-| `GET /auth/me`                                          | `MeDto` (GitHub account + active repository)                            |
-| `POST /auth/logout`                                     | Ends this session (204)                                                 |
-| `DELETE /auth/github`                                   | Revokes the GitHub grant, deletes the token, ends all sessions (204)    |
+| Method & path                                           | Description                                                                                                                       |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /auth/github?redirect_uri=&access=public\|private` | Starts OAuth; 302 to GitHub                                                                                                       |
+| `GET /auth/github/check?redirect_uri=&access=`          | Pre-flight: 204 if the server would accept this sign-in, else 400 (no side effects)                                               |
+| `GET /auth/github/callback`                             | GitHub redirect target; 302 to the extension with `?code=` or `?error=` (sign-in links: a result page instead)                    |
+| `POST /auth/github/link` `{access}`                     | Creates a sign-in link usable in any browser → `LoginLinkDto` `{url, code, pollToken, expiresAt}` (15 min). Extension origin only |
+| `GET /auth/github/link/:token`                          | Page showing the confirmation `code`, with a button to continue to GitHub                                                         |
+| `GET /auth/github/link/:token/continue`                 | Starts OAuth for the link; 302 to GitHub                                                                                          |
+| `POST /auth/github/link/poll` `{pollToken}`             | `{status: "pending"}` or, once approved and only once, `{status: "complete", session}`; 401 when expired or used                  |
+| `POST /auth/token` `{code}`                             | Exchanges the one-time code for a session → `SessionDto`                                                                          |
+| `GET /auth/me`                                          | `MeDto` (GitHub account + active repository)                                                                                      |
+| `POST /auth/logout`                                     | Ends this session (204)                                                                                                           |
+| `DELETE /auth/github`                                   | Revokes the GitHub grant, deletes the token, ends all sessions (204)                                                              |
 
 ## GitHub & repository
 

@@ -1,4 +1,4 @@
-import type { MeDto, ProblemSummaryDto, StatsDto } from '@lcsync/shared';
+import type { GitHubAccessLevel, MeDto, ProblemSummaryDto, StatsDto } from '@lcsync/shared';
 import type { LocalSyncRecord } from '../types/messages.js';
 import type { QueueItem } from './queue-types.js';
 import { DEFAULT_SETTINGS } from './settings.js';
@@ -8,9 +8,21 @@ import type { ExtensionSettings } from './settings.js';
  * Everything the extension keeps locally (chrome.storage.local). Nothing here is a GitHub
  * credential: the session is a revocable token for our backend only.
  */
+/** A sign-in link waiting to be approved (possibly in another browser or profile). */
+export interface PendingLogin {
+  url: string;
+  code: string;
+  pollToken: string;
+  expiresAt: string;
+  access: GitHubAccessLevel;
+  /** Set when the link can no longer complete (expired, rejected). */
+  error: string | null;
+}
+
 export interface StorageSchema {
   session: { token: string; expiresAt: string } | null;
   me: MeDto | null;
+  pendingLogin: PendingLogin | null;
   settings: ExtensionSettings;
   syncQueue: QueueItem[];
   recentSyncs: LocalSyncRecord[];
@@ -25,6 +37,7 @@ export interface StorageSchema {
 const DEFAULTS: StorageSchema = {
   session: null,
   me: null,
+  pendingLogin: null,
   settings: DEFAULT_SETTINGS,
   syncQueue: [],
   recentSyncs: [],

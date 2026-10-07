@@ -8,9 +8,12 @@ export interface PollOptions {
   isHandled: (submissionId: string) => boolean;
   sleep?: (ms: number) => Promise<void>;
   initialDelayMs?: number;
-  intervalMs?: number;
-  attempts?: number;
+  /** Waits between checks; the number of entries + 1 is the number of checks (at most 5). */
+  intervalsMs?: readonly number[];
 }
+
+/** 5 checks spread over ~50s: judging is usually done in seconds but can queue in contests. */
+const DEFAULT_INTERVALS_MS = [3_000, 6_000, 12_000, 24_000];
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -24,7 +27,8 @@ export async function pollForResult(
 ): Promise<CheckEvent | null> {
   const sleep = opts.sleep ?? defaultSleep;
   await sleep(opts.initialDelayMs ?? 4000);
-  for (let i = 0; i < (opts.attempts ?? 20); i++) {
+  const intervals = opts.intervalsMs ?? DEFAULT_INTERVALS_MS;
+  for (let i = 0; i <= intervals.length; i++) {
     if (opts.isHandled(submissionId)) return null;
     const details = await opts.api.fetchSubmissionDetails(submissionId).catch(() => null);
     if (details?.statusCode != null && mapLeetCodeStatus(details.statusCode) !== 'unknown') {
@@ -41,7 +45,7 @@ export async function pollForResult(
         finishedAt: details.timestamp ? details.timestamp * 1000 : null,
       };
     }
-    await sleep(opts.intervalMs ?? 3000);
+    if (i < intervals.length) await sleep(intervals[i]!);
   }
   return null;
 }

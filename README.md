@@ -121,7 +121,16 @@ Click the extension icon, then **Connect GitHub**. First choose what the extensi
   covers private repositories. The extension still only ever writes to the one repository you
   pick.
 
-A GitHub window opens. Approve it, and you're back in the extension, signed in.
+The extension then shows a one-time sign-in link with two ways to use it:
+
+- **Open GitHub sign-in** opens it in a new tab of this browser.
+- **Copy link** lets you paste it into **another browser or Chrome profile**, for example the
+  one where you're logged in to GitHub.
+
+The link page shows a short code (like `4F1A-9C2E`). Check that it matches the code in the
+extension, click **Continue to GitHub** and approve. The extension notices within a few seconds
+and signs you in, even if you closed the popup meanwhile. Links work once and expire after 15
+minutes; if you deny access by mistake, just open the same link again.
 
 You can change this later: **Settings → GitHub account → Reconnect / change access**.
 
@@ -162,7 +171,8 @@ Just use LeetCode normally. When a submission is **Accepted**:
 | Clicked **Run** (not Submit)            | Ignored                                                                  |
 
 > 💡 The extension icon shows a badge number when syncs are waiting, for example while
-> you're offline.
+> you're offline. A failed sync is retried automatically up to **5 times** with growing pauses
+> (30s, 1m, 2m, 4m). After that it waits in the popup until you press **Retry**.
 
 ### 4. The dashboard
 
@@ -368,17 +378,20 @@ Say you solve **Two Sum** ten times:
 
 ## Troubleshooting
 
-| Message / symptom                                                  | What to do                                                                                                                |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| **"GitHub authorization has expired. Please reconnect GitHub."**   | Popup → **Reconnect**, or Settings → _Reconnect / change access_. Queued syncs resume automatically.                      |
-| **"Repository not found…"**                                        | The repository was deleted or made private. Pick another one, or reconnect with private access.                           |
-| **"Branch "x" does not exist"**                                    | Choose another branch in Settings → Repository.                                                                           |
-| **"GitHub rate limit reached. Sync will resume…"**                 | Nothing to do: the sync retries automatically at the time shown.                                                          |
-| **"Cannot reach the sync server"**                                 | Make sure the server is running (`npm run dev -w @lcsync/backend`). Solutions stay queued meanwhile.                      |
-| **"Could not extract the submitted code"**                         | Reload the LeetCode page and submit again. LeetCode may have changed its page; please open an issue.                      |
-| Nothing happens after Accepted                                     | Check that the extension is enabled and that you used **Submit**, not **Run**. Open the popup and look for pending items. |
-| Sign-in window says _redirect_uri is not an allowed extension URL_ | Add your extension ID (from `chrome://extensions`) to `ALLOWED_EXTENSION_IDS` in `backend/.env` and restart the server.   |
-| Private repository missing from the list                           | Reconnect and choose **Public and private repositories**.                                                                 |
+| Message / symptom                                                | What to do                                                                                                                |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **"GitHub authorization has expired. Please reconnect GitHub."** | Popup → **Reconnect**, or Settings → _Reconnect / change access_. Queued syncs resume automatically.                      |
+| **"Repository not found…"**                                      | The repository was deleted or made private. Pick another one, or reconnect with private access.                           |
+| **"Branch "x" does not exist"**                                  | Choose another branch in Settings → Repository.                                                                           |
+| **"GitHub rate limit reached. Sync will resume…"**               | Nothing to do: the sync retries automatically at the time shown.                                                          |
+| **"Cannot reach the sync server"**                               | Make sure the server is running (`npm run dev -w @lcsync/backend`). Solutions stay queued meanwhile.                      |
+| **"Could not sync … Gave up after 5 tries"**                     | Fix the cause shown in the message, then press **Retry** in the popup (it gets 5 fresh tries).                            |
+| **"Could not extract the submitted code"**                       | Reload the LeetCode page and submit again. LeetCode may have changed its page; please open an issue.                      |
+| Nothing happens after Accepted                                   | Check that the extension is enabled and that you used **Submit**, not **Run**. Open the popup and look for pending items. |
+| **"The sync server does not accept this extension (ID …)"**      | Add that ID (also shown in `chrome://extensions`) to `ALLOWED_EXTENSION_IDS` in `backend/.env` and restart the server.    |
+| **"The sign-in link expired"** / **"already used"**              | Click **Connect GitHub** again for a fresh link.                                                                          |
+| **"The GitHub sign-in page could not be loaded"**                | The server is up but the GitHub step failed: check the server logs and the OAuth app's client ID and callback URL.        |
+| Private repository missing from the list                         | Reconnect and choose **Public and private repositories**.                                                                 |
 
 ---
 
@@ -419,7 +432,7 @@ It never reaches the browser. It's stored encrypted on the sync server, and
 
 | Command                            |                                                                         |
 | ---------------------------------- | ----------------------------------------------------------------------- |
-| `npm test`                         | All 155 tests: shared, backend (real Postgres via PGlite) and extension |
+| `npm test`                         | All 168 tests: shared, backend (real Postgres via PGlite) and extension |
 | `npm run typecheck`                | Strict TypeScript everywhere                                            |
 | `npm run lint` / `npm run format`  | ESLint / Prettier                                                       |
 | `npm run build`                    | Backend bundle + extension build                                        |

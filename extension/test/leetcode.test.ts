@@ -328,11 +328,9 @@ describe('pollForResult (backup detection)', () => {
     expect(api.fetchSubmissionDetails).not.toHaveBeenCalled();
   });
 
-  it('gives up after the configured attempts', async () => {
+  it('gives up after 5 checks by default', async () => {
     const api = { fetchSubmissionDetails: vi.fn(async () => Promise.reject(new Error('down'))) };
-    expect(
-      await pollForResult('1', { api, isHandled: () => false, sleep, attempts: 3 }),
-    ).toBeNull();
-    expect(api.fetchSubmissionDetails).toHaveBeenCalledTimes(3);
+    expect(await pollForResult('1', { api, isHandled: () => false, sleep })).toBeNull();
+    expect(api.fetchSubmissionDetails).toHaveBeenCalledTimes(5);
   });
 });

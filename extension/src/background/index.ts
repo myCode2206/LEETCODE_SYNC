@@ -9,6 +9,13 @@ import type {
   UiMessage,
 } from '../types/messages.js';
 import { clearLocalSession, connectGitHub } from './auth.js';
+import {
+  cancelSignInLink,
+  createSignInLink,
+  LINK_POLL_ALARM,
+  resumeSignInLink,
+} from './link-login.js';
+import type { LinkLoginDeps } from './link-login.js';
 import { registerNotificationClicks, showNotification } from './notifications.js';
 import { SyncQueue } from './sync-queue.js';
 
@@ -49,6 +56,19 @@ const queue = new SyncQueue({
   },
 });
 
+const linkLogin: LinkLoginDeps = {
+  api,
+  storage,
+  onConnected: (me) => {
+    showNotification({
+      kind: 'success',
+      title: 'GitHub connected',
+      message: `Signed in as ${me.github?.login ?? 'your GitHub account'}.`,
+    });
+    void queue.retryAll();
+  },
+};
+
 async function handleContent(msg: ContentMessage): Promise<unknown> {
   switch (msg.type) {
     case 'SUBMISSION_DETECTED': {
@@ -85,6 +105,11 @@ async function handleUi(msg: UiMessage): Promise<unknown> {
       void queue.retryAll();
       return me;
     }
+    case 'CREATE_SIGN_IN_LINK':
+      return createSignInLink(linkLogin, msg.access);
+    case 'CANCEL_SIGN_IN_LINK':
+      await cancelSignInLink(storage);
+      return null;
     case 'DISCONNECT_GITHUB':
       await api.disconnectGitHub().catch(() => undefined);
       await clearLocalSession(storage);
@@ -140,9 +165,13 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === RETRY_ALARM) void queue.process();
+  if (alarm.name === LINK_POLL_ALARM) void resumeSignInLink(linkLogin);
 });
 
-chrome.runtime.onStartup.addListener(() => void queue.process());
+chrome.runtime.onStartup.addListener(() => {
+  void queue.process();
+  void resumeSignInLink(linkLogin);
+});
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') void chrome.runtime.openOptionsPage();
   void queue.process();

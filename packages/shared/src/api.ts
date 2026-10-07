@@ -174,6 +174,12 @@ export const TokenExchangeInputSchema = z.object({ code: z.string().min(16).max(
 export const GITHUB_ACCESS_LEVELS = ['public', 'private'] as const;
 export type GitHubAccessLevel = (typeof GITHUB_ACCESS_LEVELS)[number];
 
+/** Sign-in link that can be opened in any browser or profile (see LoginLinkDto). */
+export const LoginLinkInputSchema = z.object({
+  access: z.enum(GITHUB_ACCESS_LEVELS).default('public'),
+});
+export const LoginLinkPollInputSchema = z.object({ pollToken: z.string().min(16).max(200) });
+
 export const ProblemListQuerySchema = z.object({
   q: z.string().max(100).optional(),
   topic: z.string().max(100).optional(),
@@ -219,6 +225,19 @@ export interface MeDto {
   github: GitHubAccountDto | null;
   repository: RepositoryConfigDto | null;
 }
+
+/**
+ * A one-time sign-in link. The user opens `url` anywhere, checks that the page shows `code`,
+ * and approves on GitHub; meanwhile the extension polls with `pollToken` for the session.
+ */
+export interface LoginLinkDto {
+  url: string;
+  code: string;
+  pollToken: string;
+  expiresAt: string;
+}
+
+export type LoginLinkPollDto = { status: 'pending' } | { status: 'complete'; session: SessionDto };
 
 export interface SessionDto {
   sessionToken: string;

@@ -59,6 +59,17 @@ export interface OauthStatesTable {
   created_at: Timestamp;
 }
 
+/** Sign-in links usable from any browser; completed by the OAuth callback, claimed by polling. */
+export interface LoginLinksTable {
+  link_hash: string;
+  poll_hash: string;
+  access_level: 'public' | 'private';
+  user_id: string | null;
+  completed_at: NullableTimestamp;
+  expires_at: Timestamp;
+  created_at: Timestamp;
+}
+
 export interface AuthCodesTable {
   code_hash: string;
   user_id: string;
@@ -243,6 +254,7 @@ export interface Database {
   github_accounts: GithubAccountsTable;
   oauth_states: OauthStatesTable;
   auth_codes: AuthCodesTable;
+  login_links: LoginLinksTable;
   sessions: SessionsTable;
   repositories: RepositoriesTable;
   problems: ProblemsTable;

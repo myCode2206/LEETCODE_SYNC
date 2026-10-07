@@ -14,6 +14,8 @@ const BASE_DELAY_MS = 30_000;
 const MAX_DELAY_MS = 30 * 60_000;
 const MAX_SEEN = 500;
 const MAX_RECENT = 20;
+/** Automatic tries per item; after that it waits for the user to press Retry. */
+export const MAX_ATTEMPTS = 5;
 
 export interface Notice {
   kind: 'success' | 'info' | 'error';
@@ -141,6 +143,19 @@ export class SyncQueue {
     }
 
     const attempts = item.attempts + 1;
+    if (attempts >= MAX_ATTEMPTS) {
+      await this.write((items) =>
+        items.map((i) =>
+          i.id === item.id ? { ...i, attempts, state: 'needs_attention', lastError: error } : i,
+        ),
+      );
+      this.deps.notify({
+        kind: 'error',
+        title: `Could not sync ${item.title}`,
+        message: `Gave up after ${MAX_ATTEMPTS} tries: ${e.message} Press Retry to try again.`,
+      });
+      return false;
+    }
     const nextAttemptAt = Math.max(
       e.retryAt?.getTime() ?? 0,
       this.deps.now() + backoffDelay(attempts),
@@ -158,11 +173,16 @@ export class SyncQueue {
     );
   }
 
-  /** Makes every parked/backed-off item due now (after reconnecting, fixing settings, or "Retry"). */
+  /**
+   * Makes every parked/backed-off item due now (after reconnecting, fixing settings, or "Retry"),
+   * with a fresh set of automatic tries.
+   */
   async retryAll(): Promise<void> {
     const now = this.deps.now();
     await this.write((items) =>
-      items.map((i) => (i.state === 'held' ? i : { ...i, state: 'pending', nextAttemptAt: now })),
+      items.map((i) =>
+        i.state === 'held' ? i : { ...i, state: 'pending', attempts: 0, nextAttemptAt: now },
+      ),
     );
     await this.process();
   }
@@ -170,7 +190,9 @@ export class SyncQueue {
   async approve(id: string): Promise<void> {
     const now = this.deps.now();
     await this.write((items) =>
-      items.map((i) => (i.id === id ? { ...i, state: 'pending', nextAttemptAt: now } : i)),
+      items.map((i) =>
+        i.id === id ? { ...i, state: 'pending', attempts: 0, nextAttemptAt: now } : i,
+      ),
     );
     await this.process();
   }

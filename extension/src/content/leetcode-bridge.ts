@@ -31,6 +31,25 @@ function send(message: ContentMessage): void {
     );
 }
 
+const RETRY_DELAYS_MS = [2_000, 5_000];
+
+/** LeetCode's API fails transiently (rate limits, slow responses): retry before giving up. */
+async function withRetries<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const wait = RETRY_DELAYS_MS[attempt];
+      if (wait === undefined) throw err;
+      logError(
+        `attempt ${attempt + 1} failed, retrying in ${wait / 1000}s:`,
+        (err as Error).message,
+      );
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+}
+
 async function handle(submit: SubmitEvent | null, check: CheckEvent): Promise<void> {
   const accepted = mapLeetCodeStatus(check.statusCode, check.statusMessage) === 'accepted';
   log(
@@ -41,14 +60,16 @@ async function handle(submit: SubmitEvent | null, check: CheckEvent): Promise<vo
     return;
   }
   try {
-    const request = await assembleSubmission({
-      submit,
-      check,
-      pageSlug: slugFromPath(location.pathname),
-      api,
-      sha256,
-      now: () => new Date(),
-    });
+    const request = await withRetries(() =>
+      assembleSubmission({
+        submit,
+        check,
+        pageSlug: slugFromPath(location.pathname),
+        api,
+        sha256,
+        now: () => new Date(),
+      }),
+    );
     log(`sending "${request.problem.title}" (${request.submission.language}) to the extension`);
     send({ type: 'SUBMISSION_DETECTED', request });
   } catch (err) {

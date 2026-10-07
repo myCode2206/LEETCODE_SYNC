@@ -94,6 +94,76 @@ describe('HTTP API', () => {
       expect(bad.body.error.code).toBe('VALIDATION_FAILED');
     });
 
+    describe('sign-in links (another browser or profile)', () => {
+      const ORIGIN = `chrome-extension://${EXTENSION_ID}`;
+      const createLink = () =>
+        ctx
+          .http()
+          .post('/api/v1/auth/github/link')
+          .set('Origin', ORIGIN)
+          .send({ access: 'public' });
+      const poll = (pollToken: string) =>
+        ctx.http().post('/api/v1/auth/github/link/poll').send({ pollToken });
+      const linkPath = (url: string) => new URL(url).pathname;
+
+      it('signs in through a link opened elsewhere, once', async () => {
+        ctx.github.addToken('gho_link', { id: 42, login: 'linker', avatarUrl: null }, [
+          'public_repo',
+        ]);
+        const link = await createLink();
+        expect(link.status).toBe(201);
+        const { url, code, pollToken } = link.body;
+        expect(code).toMatch(/^[0-9A-F]{4}-[0-9A-F]{4}$/);
+        expect((await poll(pollToken)).body).toEqual({ status: 'pending' });
+
+        const confirm = await ctx.http().get(linkPath(url));
+        expect(confirm.status).toBe(200);
+        expect(confirm.text).toContain(code);
+
+        const start = await ctx.http().get(`${linkPath(url)}/continue`);
+        const authorize = new URL(start.headers.location as string);
+        expect(authorize.searchParams.get('scope')).toBe('public_repo');
+        ctx.oauth.codes.set('link-code', { accessToken: 'gho_link', scopes: ['public_repo'] });
+        const cb = await ctx
+          .http()
+          .get('/api/v1/auth/github/callback')
+          .query({ code: 'link-code', state: authorize.searchParams.get('state') });
+        expect(cb.status).toBe(200);
+        expect(cb.text).toContain('GitHub connected');
+
+        const done = await poll(pollToken);
+        expect(done.body.status).toBe('complete');
+        expect(done.body.session.me.github.login).toBe('linker');
+        const me = await authed(done.body.session.sessionToken).get('/api/v1/auth/me');
+        expect(me.status).toBe(200);
+
+        expect((await poll(pollToken)).status).toBe(401);
+        expect((await ctx.http().get(linkPath(url))).status).toBe(400);
+      });
+
+      it('keeps the link usable after GitHub access is denied', async () => {
+        const { url, pollToken } = (await createLink()).body;
+        const start = await ctx.http().get(`${linkPath(url)}/continue`);
+        const state = new URL(start.headers.location as string).searchParams.get('state');
+        const cb = await ctx
+          .http()
+          .get('/api/v1/auth/github/callback')
+          .query({ error: 'access_denied', state });
+        expect(cb.status).toBe(400);
+        expect(cb.text).toContain('Open the same link again');
+        expect((await poll(pollToken)).body).toEqual({ status: 'pending' });
+        expect((await ctx.http().get(linkPath(url))).status).toBe(200);
+      });
+
+      it('only lets the extension create links', async () => {
+        for (const origin of [undefined, 'https://evil.example.com']) {
+          const req = ctx.http().post('/api/v1/auth/github/link');
+          const res = await (origin ? req.set('Origin', origin) : req).send({});
+          expect(res.status).toBe(400);
+        }
+      });
+    });
+
     it('rejects an unknown OAuth state with a readable page', async () => {
       const res = await ctx
         .http()

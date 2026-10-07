@@ -9,6 +9,8 @@ export type ContentMessage =
 /** Extension pages (popup/options) → background. */
 export type UiMessage =
   | { type: 'CONNECT_GITHUB'; access: GitHubAccessLevel }
+  | { type: 'CREATE_SIGN_IN_LINK'; access: GitHubAccessLevel }
+  | { type: 'CANCEL_SIGN_IN_LINK' }
   | { type: 'DISCONNECT_GITHUB' }
   | { type: 'SIGN_OUT' }
   | { type: 'GET_QUEUE' }

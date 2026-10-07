@@ -14,10 +14,11 @@ import { revisionRoutes } from './modules/revisions/revisions.routes.js';
 import { statsRoutes } from './modules/stats/stats.routes.js';
 import { syncRoutes } from './modules/sync/sync.routes.js';
 
-function limiter(limit: number) {
+function limiter(limit: number, skip?: (req: express.Request) => boolean) {
   return rateLimit({
     windowMs: 60_000,
     limit,
+    skip,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     handler: (_req, res) => {
@@ -59,7 +60,10 @@ export function createApp(c: Container, options: { trustProxy?: boolean | number
   });
 
   const api = express.Router();
-  api.use('/auth', limiter(30), authRoutes(c.auth));
+  // The extension polls sign-in links every few seconds: give polling its own budget.
+  const isLinkPoll = (req: express.Request) => req.path === '/github/link/poll';
+  api.use('/auth/github/link/poll', limiter(120));
+  api.use('/auth', limiter(30, isLinkPoll), authRoutes(c.auth));
 
   const authed = express.Router();
   authed.use(limiter(300), requireSession(c.auth));

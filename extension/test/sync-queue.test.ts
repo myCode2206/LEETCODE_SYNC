@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SyncProblemRequestInput, SyncResultDto } from '@lcsync/shared';
-import { backoffDelay, SyncQueue } from '../src/background/sync-queue.js';
+import { backoffDelay, MAX_ATTEMPTS, SyncQueue } from '../src/background/sync-queue.js';
 import type { Notice } from '../src/background/sync-queue.js';
 import { ApiError } from '../src/services/api-client.js';
 import { memoryArea, TypedStorage } from '../src/storage/storage.js';
@@ -175,6 +175,25 @@ describe('SyncQueue', () => {
     await t.queue.enqueue(request('9', 'wrong_answer'), { hold: false });
     await t.queue.process();
     expect(t.notices).toEqual([]);
+  });
+
+  it('stops retrying after 5 failed tries until the user retries', async () => {
+    const t = setup(async () => {
+      throw new ApiError('NETWORK_ERROR', 'offline', 0, true);
+    });
+    await t.queue.enqueue(request('1'), { hold: false });
+    await t.queue.process();
+    for (let i = 1; i < MAX_ATTEMPTS + 3; i++) {
+      t.advance(30 * 60_000);
+      await t.queue.process();
+    }
+    let [item] = (await t.queue.state()).items;
+    expect(item).toMatchObject({ state: 'needs_attention', attempts: MAX_ATTEMPTS });
+    expect(t.sent.filter((s) => s === 'submission:1')).toHaveLength(MAX_ATTEMPTS);
+
+    await t.queue.retryAll();
+    [item] = (await t.queue.state()).items;
+    expect(item).toMatchObject({ state: 'pending', attempts: 1 });
   });
 
   it('computes capped exponential backoff', () => {

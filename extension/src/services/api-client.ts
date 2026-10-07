@@ -7,6 +7,8 @@ import type {
   CreateRevisionInput,
   ErrorCode,
   GitHubRepoDto,
+  LoginLinkDto,
+  LoginLinkPollDto,
   MeDto,
   ProblemDetailDto,
   ProblemListQuery,
@@ -127,6 +129,16 @@ export class ApiClient {
       undefined,
       { redirect_uri: redirectUri, access },
       8_000,
+    );
+  createLoginLink = (access: 'public' | 'private') =>
+    this.request<LoginLinkDto>('POST', '/auth/github/link', { access }, undefined, 10_000);
+  pollLoginLink = (pollToken: string) =>
+    this.request<LoginLinkPollDto>(
+      'POST',
+      '/auth/github/link/poll',
+      { pollToken },
+      undefined,
+      10_000,
     );
   exchangeCode = (code: string) => this.request<SessionDto>('POST', '/auth/token', { code });
   me = () => this.request<MeDto>('GET', '/auth/me');

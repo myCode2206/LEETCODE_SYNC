@@ -1,5 +1,11 @@
 import type { Kysely } from 'kysely';
-import type { GitHubAccessLevel, MeDto, SessionDto } from '@lcsync/shared';
+import type {
+  GitHubAccessLevel,
+  LoginLinkDto,
+  LoginLinkPollDto,
+  MeDto,
+  SessionDto,
+} from '@lcsync/shared';
 import { AppError } from '../../common/app-error.js';
 import type { Clock } from '../../common/clock.js';
 import { randomToken, sha256Hex } from '../../common/crypto.js';
@@ -13,6 +19,9 @@ import { toRepositoryDto } from '../repository/repository.service.js';
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 const AUTH_CODE_TTL_MS = 2 * 60 * 1000;
+const LINK_TTL_MS = 15 * 60 * 1000;
+/** oauth_states.redirect_uri marker for logins started from a sign-in link. */
+const LINK_TARGET_PREFIX = 'link:';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SESSION_PREFIX = 'lcs_';
 
@@ -22,6 +31,10 @@ export interface AuthConfig {
   sessionTtlDays: number;
   env: 'development' | 'test' | 'production';
 }
+
+/** What the OAuth callback should do: send the browser to the extension, or show a page. */
+export type LoginOutcome =
+  { kind: 'redirect'; url: string } | { kind: 'page'; ok: boolean; message: string };
 
 export interface AuthContext {
   userId: string;
@@ -36,6 +49,11 @@ export interface AuthContext {
  *     (server-side, with the client secret), encrypt it, and redirect to the extension with a
  *     short-lived one-time `code`.
  *  3. The extension POSTs that code to /auth/token and receives a revocable session token.
+ *
+ * Sign-in links (for a GitHub login that lives in another browser or profile) replace 1 and 3:
+ * the extension creates a link and polls it; the link page shows a confirmation code, then
+ * starts the same OAuth flow; the callback marks the link complete instead of redirecting, and
+ * the next poll returns a session.
  */
 export class AuthService {
   constructor(
@@ -72,8 +90,25 @@ export class AuthService {
     return url;
   }
 
+  /** Sign-in links may only be created by an allowed extension (defence in depth over CORS). */
+  assertExtensionOrigin(origin: string | undefined): void {
+    const allowed = this.config.allowedExtensionIds;
+    if (allowed.length === 0 && this.config.env !== 'production') return;
+    const id = /^chrome-extension:\/\/([a-p]{32})$/.exec(origin ?? '')?.[1];
+    if (!id || !allowed.includes(id)) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        'Sign-in links can only be created by the extension.',
+      );
+    }
+  }
+
   async startLogin(redirectUri: string, access: GitHubAccessLevel): Promise<string> {
     const target = this.validateRedirectUri(redirectUri);
+    return this.beginOAuth(target.toString(), access);
+  }
+
+  private async beginOAuth(target: string, access: GitHubAccessLevel): Promise<string> {
     const state = randomToken(32);
     const now = this.clock.now();
     await this.db.deleteFrom('oauth_states').where('expires_at', '<', now).execute();
@@ -81,7 +116,7 @@ export class AuthService {
       .insertInto('oauth_states')
       .values({
         state_hash: sha256Hex(state),
-        redirect_uri: target.toString(),
+        redirect_uri: target,
         access_level: access,
         expires_at: new Date(now.getTime() + STATE_TTL_MS),
       })
@@ -93,11 +128,105 @@ export class AuthService {
     });
   }
 
+  /** Creates a sign-in link that can be opened in any browser. */
+  async createLoginLink(access: GitHubAccessLevel): Promise<LoginLinkDto> {
+    const now = this.clock.now();
+    await this.db
+      .deleteFrom('login_links')
+      .where('expires_at', '<', new Date(now.getTime() - LINK_TTL_MS))
+      .execute();
+    const linkToken = randomToken(24);
+    const pollToken = randomToken(32);
+    const expiresAt = new Date(now.getTime() + LINK_TTL_MS);
+    await this.db
+      .insertInto('login_links')
+      .values({
+        link_hash: sha256Hex(linkToken),
+        poll_hash: sha256Hex(pollToken),
+        access_level: access,
+        expires_at: expiresAt,
+      })
+      .execute();
+    return {
+      url: `${this.config.publicBaseUrl}/api/v1/auth/github/link/${linkToken}`,
+      code: linkCode(linkToken),
+      pollToken,
+      expiresAt: expiresAt.toISOString(),
+    };
+  }
+
+  /** Validates a sign-in link; returns the code the page shows for the user to compare. */
+  async describeLoginLink(linkToken: string): Promise<{ code: string }> {
+    await this.openLink(linkToken);
+    return { code: linkCode(linkToken) };
+  }
+
+  /** Starts GitHub OAuth for a sign-in link (after the user confirmed the code). */
+  async startLinkLogin(linkToken: string): Promise<string> {
+    const link = await this.openLink(linkToken);
+    return this.beginOAuth(LINK_TARGET_PREFIX + link.link_hash, link.access_level);
+  }
+
+  private async openLink(linkToken: string) {
+    const link = await this.db
+      .selectFrom('login_links')
+      .selectAll()
+      .where('link_hash', '=', sha256Hex(linkToken))
+      .executeTakeFirst();
+    if (!link || link.expires_at < this.clock.now()) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        'This sign-in link has expired. Create a new one from the extension.',
+      );
+    }
+    if (link.completed_at) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        'This sign-in link was already used. Return to the extension.',
+      );
+    }
+    return link;
+  }
+
+  /** Polled by the extension. A completed link is claimed once and turned into a session. */
+  async pollLoginLink(pollToken: string): Promise<LoginLinkPollDto> {
+    const pollHash = sha256Hex(pollToken);
+    const link = await this.db
+      .selectFrom('login_links')
+      .select(['completed_at', 'expires_at'])
+      .where('poll_hash', '=', pollHash)
+      .executeTakeFirst();
+    const expired = (l: { expires_at: Date }) => l.expires_at < this.clock.now();
+    if (!link || (!link.completed_at && expired(link))) {
+      throw new AppError(
+        'UNAUTHENTICATED',
+        'The sign-in link expired before it was used. Please create a new one.',
+      );
+    }
+    if (!link.completed_at) return { status: 'pending' };
+
+    const claimed = await this.db
+      .deleteFrom('login_links')
+      .where('poll_hash', '=', pollHash)
+      .where('completed_at', 'is not', null)
+      .returning(['user_id'])
+      .executeTakeFirst();
+    if (!claimed?.user_id) {
+      throw new AppError('UNAUTHENTICATED', 'This sign-in link was already used.');
+    }
+    return { status: 'complete', session: await this.createSession(claimed.user_id) };
+  }
+
   /**
-   * Handles GitHub's redirect. Returns the extension URL to redirect to (with a one-time code or
-   * an error), or throws if the state is unknown — in that case we cannot safely redirect anywhere.
+   * Handles GitHub's redirect: back to the extension with a one-time code (or an error), or, for
+   * a sign-in link, a page telling the user to return to the extension. Throws if the state is
+   * unknown — in that case we cannot safely redirect anywhere.
    */
-  async completeLogin(params: { code?: string; state?: string; error?: string }): Promise<string> {
+  async completeLogin(params: {
+    code?: string;
+    state?: string;
+    error?: string;
+  }): Promise<LoginOutcome> {
     if (!params.state) throw new AppError('VALIDATION_FAILED', 'Missing OAuth state.');
     const row = await this.db
       .deleteFrom('oauth_states')
@@ -110,6 +239,9 @@ export class AuthService {
         'This sign-in link has expired. Please start again from the extension.',
       );
     }
+    if (row.redirect_uri.startsWith(LINK_TARGET_PREFIX)) {
+      return this.completeLinkLogin(row.redirect_uri.slice(LINK_TARGET_PREFIX.length), params);
+    }
     const back = new URL(row.redirect_uri);
 
     if (params.error || !params.code) {
@@ -117,13 +249,11 @@ export class AuthService {
         'error',
         params.error === 'access_denied' ? 'access_denied' : 'github_error',
       );
-      return back.toString();
+      return { kind: 'redirect', url: back.toString() };
     }
 
     try {
-      const token = await this.oauth.exchangeCode(params.code, this.callbackUrl);
-      const ghUser = await this.apiFactory(token.accessToken).getAuthenticatedUser();
-      const userId = await this.accounts.upsertFromOAuth(ghUser, token.accessToken, token.scopes);
+      const userId = await this.signInWithGitHub(params.code);
       const code = randomToken(32);
       await this.db
         .insertInto('auth_codes')
@@ -138,7 +268,59 @@ export class AuthService {
       this.logger.warn('github login failed', { err });
       back.searchParams.set('error', 'sign_in_failed');
     }
-    return back.toString();
+    return { kind: 'redirect', url: back.toString() };
+  }
+
+  /** A failed attempt leaves the link pending, so the user can simply open it again. */
+  private async completeLinkLogin(
+    linkHash: string,
+    params: { code?: string; error?: string },
+  ): Promise<LoginOutcome> {
+    const retry = 'Open the same link again to retry.';
+    if (params.error || !params.code) {
+      return {
+        kind: 'page',
+        ok: false,
+        message:
+          params.error === 'access_denied'
+            ? `GitHub access was not granted. ${retry}`
+            : `GitHub reported an error. ${retry}`,
+      };
+    }
+    let userId: string;
+    try {
+      userId = await this.signInWithGitHub(params.code);
+    } catch (err) {
+      this.logger.warn('github login failed', { err });
+      return { kind: 'page', ok: false, message: `GitHub sign-in failed. ${retry}` };
+    }
+    const now = this.clock.now();
+    const done = await this.db
+      .updateTable('login_links')
+      .set({ user_id: userId, completed_at: now })
+      .where('link_hash', '=', linkHash)
+      .where('completed_at', 'is', null)
+      .where('expires_at', '>', now)
+      .returning('link_hash')
+      .executeTakeFirst();
+    if (!done) {
+      return {
+        kind: 'page',
+        ok: false,
+        message: 'This sign-in link expired. Create a new one from the extension.',
+      };
+    }
+    return {
+      kind: 'page',
+      ok: true,
+      message: 'GitHub is connected. You can close this tab and return to the extension.',
+    };
+  }
+
+  private async signInWithGitHub(oauthCode: string): Promise<string> {
+    const token = await this.oauth.exchangeCode(oauthCode, this.callbackUrl);
+    const ghUser = await this.apiFactory(token.accessToken).getAuthenticatedUser();
+    return this.accounts.upsertFromOAuth(ghUser, token.accessToken, token.scopes);
   }
 
   /** Exchanges the one-time login code for a session. */
@@ -158,18 +340,23 @@ export class AuthService {
         'Sign-in code is invalid or expired. Please connect GitHub again.',
       );
 
+    return this.createSession(row.user_id);
+  }
+
+  private async createSession(userId: string): Promise<SessionDto> {
+    const now = this.clock.now();
     const sessionToken = SESSION_PREFIX + randomToken(32);
     const expiresAt = new Date(now.getTime() + this.config.sessionTtlDays * DAY_MS);
     await this.db
       .insertInto('sessions')
       .values({
-        user_id: row.user_id,
+        user_id: userId,
         token_hash: sha256Hex(sessionToken),
         expires_at: expiresAt,
         last_used_at: now,
       })
       .execute();
-    return { sessionToken, expiresAt: expiresAt.toISOString(), me: await this.me(row.user_id) };
+    return { sessionToken, expiresAt: expiresAt.toISOString(), me: await this.me(userId) };
   }
 
   /** Resolves a bearer token. Sessions slide: used sessions are extended once half-expired. */
@@ -220,4 +407,10 @@ export class AuthService {
     await this.accounts.disconnect(userId);
     await this.db.deleteFrom('sessions').where('user_id', '=', userId).execute();
   }
+}
+
+/** Short code shown both in the extension and on the link page, e.g. "4F1A-9C2E". */
+function linkCode(linkToken: string): string {
+  const hex = sha256Hex(`code:${linkToken}`).slice(0, 8).toUpperCase();
+  return `${hex.slice(0, 4)}-${hex.slice(4)}`;
 }
