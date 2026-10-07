@@ -11,6 +11,7 @@ import {
 } from '../src/leetcode/interceptor.js';
 import { installPageHook } from '../src/leetcode/page-hook-core.js';
 import type { CheckEvent, HookMessage, SubmitEvent } from '../src/leetcode/protocol.js';
+import { pollForResult } from '../src/leetcode/result-poller.js';
 import { SubmissionTracker } from '../src/leetcode/submission-tracker.js';
 
 // Recorded shapes of LeetCode responses (trimmed).
@@ -46,6 +47,7 @@ const TWO_SUM: QuestionData = {
   titleSlug: 'two-sum',
   difficulty: 'Easy',
   isPaidOnly: false,
+  content: '<p>Given an array of integers <code>nums</code>…</p>',
   topicTags: [
     { name: 'Array', slug: 'array' },
     { name: 'Hash Table', slug: 'hash-table' },
@@ -64,6 +66,13 @@ describe('URL matching', () => {
       matchCheckUrl('https://leetcode.com/submissions/detail/runcode_1700000000.123_abc/check/'),
     ).toBeNull();
     expect(matchCheckUrl('https://evil.com/submissions/detail/1/check/')).toBeNull();
+    // LeetCode's current endpoint (seen live, 2026-10) has a version segment.
+    expect(matchCheckUrl('https://leetcode.com/submissions/detail/2165707846/v2/check/')).toBe(
+      '2165707846',
+    );
+    expect(
+      matchCheckUrl('https://leetcode.com/submissions/detail/runcode_1.2_x/v2/check/'),
+    ).toBeNull();
   });
 });
 
@@ -164,6 +173,7 @@ describe('assembleSubmission', () => {
           { name: 'Hash Table', slug: 'hash-table' },
         ],
         isPaidOnly: false,
+        content: '<p>Given an array of integers <code>nums</code>…</p>',
       },
       submission: {
         leetcodeSubmissionId: '1234567890',
@@ -285,5 +295,44 @@ describe('page hook', () => {
     await win.fetch('https://leetcode.com/graphql/');
     await new Promise((r) => setTimeout(r, 10));
     expect(messages).toEqual([]);
+  });
+});
+
+describe('pollForResult (backup detection)', () => {
+  const sleep = async () => {};
+  const details = (statusCode: number | null) => ({
+    code: 'x',
+    timestamp: 1791402132,
+    statusCode,
+    lang: 'python3',
+    questionId: '301',
+    titleSlug: 'remove-invalid-parentheses',
+  });
+
+  it('polls until LeetCode reports a final verdict', async () => {
+    const answers = [null, details(null), details(10)];
+    const api = { fetchSubmissionDetails: vi.fn(async () => answers.shift() ?? null) };
+    const check = await pollForResult('2165707846', { api, isHandled: () => false, sleep });
+    expect(api.fetchSubmissionDetails).toHaveBeenCalledTimes(3);
+    expect(check).toMatchObject({
+      submissionId: '2165707846',
+      statusCode: 10,
+      lang: 'python3',
+      finishedAt: 1791402132000,
+    });
+  });
+
+  it('stops when the result was already observed on the network', async () => {
+    const api = { fetchSubmissionDetails: vi.fn(async () => details(10)) };
+    expect(await pollForResult('1', { api, isHandled: () => true, sleep })).toBeNull();
+    expect(api.fetchSubmissionDetails).not.toHaveBeenCalled();
+  });
+
+  it('gives up after the configured attempts', async () => {
+    const api = { fetchSubmissionDetails: vi.fn(async () => Promise.reject(new Error('down'))) };
+    expect(
+      await pollForResult('1', { api, isHandled: () => false, sleep, attempts: 3 }),
+    ).toBeNull();
+    expect(api.fetchSubmissionDetails).toHaveBeenCalledTimes(3);
   });
 });

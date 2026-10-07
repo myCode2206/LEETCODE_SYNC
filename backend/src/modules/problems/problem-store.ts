@@ -14,6 +14,7 @@ export interface ProblemInfo {
   difficulty: 'Easy' | 'Medium' | 'Hard';
   topics: { name: string; slug: string }[];
   isPaidOnly?: boolean;
+  content?: string | null;
 }
 
 export interface StoredSolution extends SolutionRecord {
@@ -61,6 +62,7 @@ export async function upsertCatalogProblem(trx: Db, info: ProblemInfo): Promise<
         title_slug: info.titleSlug,
         difficulty: info.difficulty,
         is_paid_only: info.isPaidOnly ?? false,
+        ...(info.content ? { content: info.content } : {}),
         updated_at: new Date(),
       })
       .where('id', '=', problemId)
@@ -76,6 +78,7 @@ export async function upsertCatalogProblem(trx: Db, info: ProblemInfo): Promise<
         difficulty: info.difficulty,
         directory_name: problemDirectoryName(info.frontendId, info.titleSlug),
         is_paid_only: info.isPaidOnly ?? false,
+        content: info.content ?? null,
       })
       .returning('id')
       .executeTakeFirstOrThrow();
@@ -201,6 +204,7 @@ export async function loadProblems(
       'p.title_slug',
       'p.difficulty',
       'p.directory_name',
+      'p.is_paid_only',
       'up.status',
       'up.notes',
       'up.time_complexity',
@@ -292,6 +296,16 @@ export async function loadProblems(
         .execute()
     : [];
 
+  const contentRows = includeCode
+    ? await db
+        .selectFrom('problems as p')
+        .innerJoin('user_problems as up', 'up.problem_id', 'p.id')
+        .where('up.user_id', '=', userId)
+        .where('p.content', 'is not', null)
+        .select(['up.id as userProblemId', 'p.content'])
+        .execute()
+    : [];
+
   const group = <T extends { userProblemId: string }>(items: T[]) => {
     const map = new Map<string, T[]>();
     for (const item of items) {
@@ -307,6 +321,7 @@ export async function loadProblems(
   const tags = group(tagRows);
   const solutions = group(solutionRows);
   const attempts = group(attemptRows);
+  const contents = group(contentRows);
 
   return rows.map((r) => ({
     userProblemId: r.userProblemId,
@@ -317,6 +332,8 @@ export async function loadProblems(
     titleSlug: r.title_slug,
     difficulty: r.difficulty,
     directoryName: r.directory_name,
+    isPaidOnly: r.is_paid_only,
+    content: contents.get(r.userProblemId)?.[0]?.content ?? null,
     topics: (topics.get(r.userProblemId) ?? []).map((t) => ({ name: t.name, slug: t.slug })),
     patterns: (patterns.get(r.userProblemId) ?? []).map((p) => p.name),
     customTags: (tags.get(r.userProblemId) ?? []).map((t) => t.name),

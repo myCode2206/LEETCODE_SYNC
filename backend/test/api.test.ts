@@ -78,6 +78,22 @@ describe('HTTP API', () => {
       }
     });
 
+    it('pre-checks the redirect URI without starting a login', async () => {
+      const ok = await ctx
+        .http()
+        .get('/api/v1/auth/github/check')
+        .query({ redirect_uri: REDIRECT_URI });
+      expect(ok.status).toBe(204);
+      expect(await ctx.db.selectFrom('oauth_states').selectAll().execute()).toHaveLength(0);
+
+      const bad = await ctx
+        .http()
+        .get('/api/v1/auth/github/check')
+        .query({ redirect_uri: 'https://evil.example.com/cb' });
+      expect(bad.status).toBe(400);
+      expect(bad.body.error.code).toBe('VALIDATION_FAILED');
+    });
+
     it('rejects an unknown OAuth state with a readable page', async () => {
       const res = await ctx
         .http()

@@ -51,7 +51,7 @@ export interface MutationResult {
 export class ApiClient {
   constructor(
     private readonly getToken: () => Promise<string | null>,
-    private readonly baseUrl: string = API_BASE_URL,
+    readonly baseUrl: string = API_BASE_URL,
     private readonly fetchImpl: typeof fetch = (...args) => fetch(...args),
   ) {}
 
@@ -60,6 +60,7 @@ export class ApiClient {
     path: string,
     body?: unknown,
     query?: Record<string, unknown>,
+    timeoutMs?: number,
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}${API_PREFIX}${path}`);
     for (const [k, v] of Object.entries(query ?? {})) {
@@ -75,8 +76,12 @@ export class ApiClient {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
       });
-    } catch {
+    } catch (err) {
+      if ((err as Error).name === 'TimeoutError') {
+        throw new ApiError('NETWORK_ERROR', 'The sync server did not respond in time.', 0, true);
+      }
       throw new ApiError(
         'NETWORK_ERROR',
         'Cannot reach the sync server. Check your connection; pending syncs are kept.',
@@ -114,6 +119,15 @@ export class ApiClient {
     return url.toString();
   }
 
+  /** Side-effect-free check that the server is up and will accept `redirectUri` for sign-in. */
+  checkLogin = (redirectUri: string, access: 'public' | 'private') =>
+    this.request<void>(
+      'GET',
+      '/auth/github/check',
+      undefined,
+      { redirect_uri: redirectUri, access },
+      8_000,
+    );
   exchangeCode = (code: string) => this.request<SessionDto>('POST', '/auth/token', { code });
   me = () => this.request<MeDto>('GET', '/auth/me');
   logout = () => this.request<void>('POST', '/auth/logout');

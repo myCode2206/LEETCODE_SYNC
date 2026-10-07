@@ -8,6 +8,7 @@ import { MaintenanceSection } from './sections/MaintenanceSection.js';
 import { PrivacySection } from './sections/PrivacySection.js';
 import { RepositorySection } from './sections/RepositorySection.js';
 import { SyncSection } from './sections/SyncSection.js';
+import { UploadSection } from './sections/UploadSection.js';
 
 const storage = chromeStorage();
 
@@ -31,6 +32,7 @@ export function OptionsApp() {
         <nav className="toc">
           <a href="#github">GitHub</a>
           <a href="#repository">Repository</a>
+          <a href="#upload">What to upload</a>
           <a href="#sync">Sync</a>
           <a href="#generation">Repository files</a>
           <a href="#maintenance">Queue &amp; maintenance</a>
@@ -39,6 +41,7 @@ export function OptionsApp() {
       </header>
       <AccountSection me={me ?? null} />
       {connected && me && <RepositorySection me={me} />}
+      {connected && me?.repository && <UploadSection repository={me.repository} />}
       <SyncSection me={me ?? null} />
       {connected && me?.repository && <GenerationSection repository={me.repository} />}
       <MaintenanceSection connected={connected && !!me?.repository} />

@@ -15,6 +15,10 @@ export class SubmissionTracker {
     trim(this.submits);
   }
 
+  isHandled(submissionId: string): boolean {
+    return this.handled.has(submissionId);
+  }
+
   /** Returns the pair the first time a final result for a submission is seen; afterwards null. */
   onCheck(event: CheckEvent): { submit: SubmitEvent | null; check: CheckEvent } | null {
     if (this.handled.has(event.submissionId)) return null;

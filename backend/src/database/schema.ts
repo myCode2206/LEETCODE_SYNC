@@ -102,6 +102,8 @@ export interface ProblemsTable {
   /** Assigned once; never changes even if the title or slug changes. */
   directory_name: string;
   is_paid_only: boolean;
+  /** LeetCode's problem statement (HTML); null until a client sends it. */
+  content: string | null;
   created_at: Timestamp;
   updated_at: Timestamp;
 }

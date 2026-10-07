@@ -5,8 +5,12 @@
 
 /** POST https://leetcode.com/problems/<slug>/submit/ */
 export const SUBMIT_URL = /^https:\/\/leetcode\.com\/problems\/([a-z0-9-]+)\/submit\/?(?:\?.*)?$/;
-/** GET https://leetcode.com/submissions/detail/<numeric id>/check/ ("Run code" uses non-numeric ids). */
-export const CHECK_URL = /^https:\/\/leetcode\.com\/submissions\/detail\/(\d+)\/check\/?(?:\?.*)?$/;
+/**
+ * GET https://leetcode.com/submissions/detail/<numeric id>/[v2/]check/
+ * ("Run code" uses non-numeric "runcode_…" ids and is ignored).
+ */
+export const CHECK_URL =
+  /^https:\/\/leetcode\.com\/submissions\/detail\/(\d+)\/(?:v\d+\/)?check\/?(?:\?.*)?$/;
 
 export const MESSAGE_SOURCE = 'lcsync-page-hook';
 

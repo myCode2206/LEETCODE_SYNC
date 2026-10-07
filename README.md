@@ -285,6 +285,13 @@ your repository.
 | Update GitHub solution when I submit again | Latest  | _Latest_ (default), _Only if faster_, or _Keep my first solution_. Old versions stay in Git history. |
 | Commit when only statistics change         |   ❌    | On: identical re-submissions also commit updated counts.                                             |
 
+### What to upload
+
+Choose **Questions and solutions** (recommended) or **Solutions only**. With questions, each
+problem README starts with the full LeetCode question: description, examples, constraints and
+images. Premium (paid-only) questions are only uploaded to private repositories. After changing
+this, click **Update now** to apply it to problems already on GitHub.
+
 ### Repository files
 
 Turn each of these on or off: **README**, **topic**, **pattern**, **difficulty** and
@@ -311,7 +318,7 @@ leetcode-solutions/
 ├── README.md                       ← progress & topic tables (your own text is kept)
 ├── problems/
 │   ├── 0001-two-sum/
-│   │   ├── README.md               ← problem info, links, all solutions, your notes
+│   │   ├── README.md               ← problem description, links, all solutions, your notes
 │   │   ├── metadata.json           ← counts, dates, topics, patterns, tags
 │   │   └── solutions/
 │   │       ├── python.py

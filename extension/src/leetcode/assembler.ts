@@ -81,6 +81,7 @@ export async function assembleSubmission(input: AssembleInput): Promise<SyncProb
       difficulty: normalizeDifficulty(question.difficulty),
       topics: question.topicTags.map((t) => ({ name: t.name, slug: t.slug })),
       isPaidOnly: question.isPaidOnly,
+      content: question.content ?? null,
     },
     submission: {
       leetcodeSubmissionId: submissionId,

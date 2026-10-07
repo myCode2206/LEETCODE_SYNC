@@ -14,6 +14,9 @@ export interface ProblemRecord {
   titleSlug: string;
   difficulty: Difficulty;
   directoryName: string;
+  isPaidOnly: boolean;
+  /** LeetCode problem statement (HTML), if known. */
+  content: string | null;
   topics: { name: string; slug: string }[];
   patterns: string[];
   customTags: string[];
@@ -59,6 +62,8 @@ export interface SavedAttemptRecord {
 export interface GeneratorOptions {
   settings: RepositorySettings;
   rootDir: string;
+  /** Premium problem descriptions are only published to private repositories. */
+  isPrivateRepository: boolean;
 }
 
 export interface GeneratedFile {

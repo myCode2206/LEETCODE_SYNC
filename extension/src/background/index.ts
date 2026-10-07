@@ -1,5 +1,6 @@
 import { SyncProblemRequestSchema } from '@lcsync/shared';
-import { ApiClient, ApiError } from '../services/api-client.js';
+import { API_BASE_URL, ApiClient, ApiError } from '../services/api-client.js';
+import { log, logError } from '../utils/log.js';
 import { chromeStorage } from '../storage/storage.js';
 import type {
   ContentMessage,
@@ -17,7 +18,17 @@ const api = new ApiClient(async () => (await storage.get('session'))?.token ?? n
 
 const queue = new SyncQueue({
   storage,
-  sync: (request) => api.syncProblem(request),
+  sync: async (request) => {
+    log(`syncing ${request.idempotencyKey} to ${API_BASE_URL}`);
+    try {
+      const result = await api.syncProblem(request);
+      log('server:', result.outcome, '—', result.message, result.commitUrl ?? '');
+      return result;
+    } catch (err) {
+      logError('sync failed:', err instanceof ApiError ? `${err.code}: ${err.message}` : err);
+      throw err;
+    }
+  },
   now: () => Date.now(),
   notify: (notice) => {
     void storage.get('settings').then((s) => {
@@ -41,12 +52,19 @@ const queue = new SyncQueue({
 async function handleContent(msg: ContentMessage): Promise<unknown> {
   switch (msg.type) {
     case 'SUBMISSION_DETECTED': {
+      log(
+        'submission received from LeetCode tab:',
+        msg.request.idempotencyKey,
+        msg.request.submission.status,
+      );
       const parsed = SyncProblemRequestSchema.safeParse(msg.request);
       if (!parsed.success)
         throw new ApiError('VALIDATION_FAILED', 'Detected submission was incomplete.', 0, false);
       const settings = await storage.get('settings');
       const accepted = msg.request.submission.status === 'accepted';
       if (!accepted && !settings.syncFailedSubmissions) return 'ignored';
+      if (!(await storage.get('session')))
+        logError('not signed in: open the extension and click Connect GitHub');
       const request = { ...msg.request, options: { commit: settings.commitAutomatically } };
       return queue.enqueue(request, { hold: accepted && !settings.autoSync });
     }

@@ -308,6 +308,17 @@ describe('sync pipeline', () => {
     expect(problemDirs()).toEqual(new Set(['0001-two-sum', 'lcp-01-two-sum-lcp']));
   });
 
+  it('stores the problem statement and never erases it with a client that omits it', async () => {
+    const content = '<p>Given an array of integers <code>nums</code>…</p>';
+    await sync(submission({ problem: { content } }));
+    expect(files().get('problems/0001-two-sum/README.md')).toContain('## Problem\n\n' + content);
+
+    await sync(
+      submission({ submission: { code: 'changed', submittedAt: '2026-10-08T10:00:00Z' } }),
+    );
+    expect(files().get('problems/0001-two-sum/README.md')).toContain(content);
+  });
+
   it('handles problems without topics', async () => {
     await sync(submission({ problem: { topics: [] } }));
     const f = files();

@@ -6,6 +6,7 @@ import {
   saveAttemptMessage,
 } from '../src/modules/generator/commit-message.js';
 import { codeBlock } from '../src/modules/generator/markdown.js';
+import { statementToMarkdown } from '../src/modules/generator/problem-statement.js';
 import { problemMetadata, problemReadme } from '../src/modules/generator/problem-files.js';
 import { generateRepository } from '../src/modules/generator/repository-generator.js';
 import { mergeRootReadme, README_END, README_START } from '../src/modules/generator/root-readme.js';
@@ -20,6 +21,8 @@ function record(overrides: Partial<ProblemRecord> = {}): ProblemRecord {
     titleSlug: 'two-sum',
     difficulty: 'Easy',
     directoryName: '0001-two-sum',
+    isPaidOnly: false,
+    content: null,
     topics: [
       { name: 'Array', slug: 'array' },
       { name: 'Hash Table', slug: 'hash-table' },
@@ -57,7 +60,7 @@ function record(overrides: Partial<ProblemRecord> = {}): ProblemRecord {
   };
 }
 
-const opts = { settings: DEFAULT_REPOSITORY_SETTINGS, rootDir: '' };
+const opts = { settings: DEFAULT_REPOSITORY_SETTINGS, rootDir: '', isPrivateRepository: false };
 
 describe('problem README', () => {
   it('contains only reliable information', () => {
@@ -90,6 +93,45 @@ describe('problem README', () => {
 
   it('uses a longer fence when code contains backticks', () => {
     expect(codeBlock('s = "```"', 'python')).toBe('````python\ns = "```"\n````');
+  });
+});
+
+describe('problem statement', () => {
+  const html =
+    '<p>Given an array of integers&nbsp;<code>nums</code>, return indices.</p>\n\n' +
+    '<p><strong class="example">Example 1:</strong></p>\n\n' +
+    '<pre>\n<strong>Input:</strong> nums = [2,7,11,15], target = 9\n\n<strong>Output:</strong> [0,1]\n</pre>\n\n' +
+    '<ul>\n\t<li><code>2 &lt;= nums.length</code></li>\n</ul>\n';
+
+  it('is shown above the solution', () => {
+    const md = problemReadme(record({ content: html }), opts);
+    expect(md.indexOf('## Problem')).toBeGreaterThan(-1);
+    expect(md.indexOf('## Problem')).toBeLessThan(md.indexOf('## Solution'));
+    expect(md).toContain('<code>nums</code>');
+  });
+
+  it('keeps HTML rendering on GitHub: no blank lines or indentation outside <pre>', () => {
+    const out = statementToMarkdown(html);
+    expect(out).toContain('<li><code>2 &lt;= nums.length</code></li>'); // not an indented code block
+    expect(out).toContain('integers <code>nums</code>');
+    expect(out.split('<pre>')[0]).not.toMatch(/\n\s*\n/);
+    expect(out).toContain(
+      '<pre>\n<strong>Input:</strong> nums = [2,7,11,15], target = 9\n<strong>Output:</strong>',
+    );
+  });
+
+  it('respects the setting', () => {
+    const off = {
+      ...opts,
+      settings: { ...DEFAULT_REPOSITORY_SETTINGS, includeProblemStatement: false },
+    };
+    expect(problemReadme(record({ content: html }), off)).not.toContain('## Problem');
+  });
+
+  it('publishes premium descriptions only to private repositories', () => {
+    const premium = record({ content: html, isPaidOnly: true });
+    expect(problemReadme(premium, opts)).not.toContain('## Problem');
+    expect(problemReadme(premium, { ...opts, isPrivateRepository: true })).toContain('## Problem');
   });
 });
 

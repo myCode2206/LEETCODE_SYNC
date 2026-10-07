@@ -3,6 +3,8 @@
  * Postgres-free local development (DATABASE_URL=pglite://...). PGlite is a single session, so
  * connections are handed out one at a time to keep transactions isolated.
  */
+import { mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { PostgresDialect } from 'kysely';
 import type { PostgresPool, PostgresPoolClient, PostgresQueryResult } from 'kysely';
 
@@ -10,6 +12,8 @@ const AFFECTING = /^\s*(insert|update|delete|merge)\b/i;
 
 export async function createPgliteDialect(dataDir?: string): Promise<PostgresDialect> {
   const { PGlite, types } = await import('@electric-sql/pglite');
+  // PGlite creates the data directory itself but not its parents (e.g. ".data/").
+  if (dataDir) await mkdir(dirname(dataDir), { recursive: true });
   const pglite = await PGlite.create(dataDir, {
     parsers: { [types.INT8]: (value: string) => Number(value) },
   });

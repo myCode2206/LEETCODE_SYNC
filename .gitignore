@@ -8,3 +8,6 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 extension/release/
+
+# Local embedded database (DATABASE_URL=pglite://...)
+.data/

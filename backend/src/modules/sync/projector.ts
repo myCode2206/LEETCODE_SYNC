@@ -81,7 +81,7 @@ export class RepositoryProjector {
       const output = generateRepository(
         plan.problems,
         plan.full ? 'all' : new Set(plan.scope.map((p) => p.userProblemId)),
-        { settings: repo.settings, rootDir: repo.rootDir },
+        { settings: repo.settings, rootDir: repo.rootDir, isPrivateRepository: repo.isPrivate },
       );
       const commit = await commitFiles(api, {
         ref: { owner: repo.owner, repo: repo.name },

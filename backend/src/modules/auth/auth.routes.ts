@@ -32,6 +32,14 @@ export function authRoutes(auth: AuthService): Router {
     res.redirect(302, await auth.startLogin(q.redirect_uri, q.access));
   });
 
+  // Pre-flight for the extension: launchWebAuthFlow hides HTTP errors behind a generic
+  // "page could not be loaded", so the extension checks reachability and its redirect URI here.
+  router.get('/github/check', (req, res) => {
+    const q = parse(StartQuery, req.query);
+    auth.validateRedirectUri(q.redirect_uri);
+    res.status(204).end();
+  });
+
   router.get('/github/callback', async (req, res) => {
     const q = parse(CallbackQuery, req.query);
     try {

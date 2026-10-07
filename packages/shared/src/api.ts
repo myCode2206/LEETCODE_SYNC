@@ -21,6 +21,8 @@ export const TopicSchema = z.object({
   slug: z.string().trim().min(1).max(100),
 });
 
+export const MAX_CONTENT_LENGTH = 100_000;
+
 export const ProblemInfoSchema = z.object({
   /** LeetCode internal question id (stable across title changes). */
   questionId: z.string().trim().min(1).max(32),
@@ -36,6 +38,8 @@ export const ProblemInfoSchema = z.object({
   difficulty: z.enum(DIFFICULTIES),
   topics: z.array(TopicSchema).max(50).default([]),
   isPaidOnly: z.boolean().optional(),
+  /** Problem statement as LeetCode's HTML. Optional: older clients do not send it. */
+  content: z.string().max(MAX_CONTENT_LENGTH).nullish(),
 });
 
 export const MAX_CODE_LENGTH = 200_000;
@@ -109,6 +113,11 @@ export const RepositorySettingsSchema = z.object({
   /** Commit when only counters/timestamps changed (identical resubmission). */
   commitMetadataOnlyChanges: z.boolean().default(false),
   suggestPatternsFromTopics: z.boolean().default(true),
+  /**
+   * Include the problem description in each problem README. Premium (paid-only) descriptions
+   * are only included in private repositories.
+   */
+  includeProblemStatement: z.boolean().default(true),
 });
 export type RepositorySettings = z.infer<typeof RepositorySettingsSchema>;
 export const DEFAULT_REPOSITORY_SETTINGS: RepositorySettings = RepositorySettingsSchema.parse({});

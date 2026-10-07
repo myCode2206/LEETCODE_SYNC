@@ -7,6 +7,8 @@ export interface QuestionData {
   titleSlug: string;
   difficulty: string;
   isPaidOnly: boolean;
+  /** Problem statement (HTML); null for premium problems the user cannot access. */
+  content: string | null;
   topicTags: { name: string; slug: string }[];
 }
 
@@ -27,7 +29,7 @@ export interface LeetCodeApi {
 
 export const QUESTION_QUERY = `query questionData($titleSlug: String!) {
   question(titleSlug: $titleSlug) {
-    questionId questionFrontendId title titleSlug difficulty isPaidOnly
+    questionId questionFrontendId title titleSlug difficulty isPaidOnly content
     topicTags { name slug }
   }
 }`;

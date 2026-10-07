@@ -1,5 +1,6 @@
 import { getLanguage, leetcodeProblemUrl, REVISION_STATUS_LABELS, slugify } from '@lcsync/shared';
 import { codeBlock, escapeMd, isoDate } from './markdown.js';
+import { statementToMarkdown } from './problem-statement.js';
 import type { GeneratorOptions, ProblemRecord } from './types.js';
 
 export const METADATA_SCHEMA_VERSION = 1;
@@ -76,6 +77,10 @@ export function problemReadme(p: ProblemRecord, opts: GeneratorOptions): string 
     lines.push(`**Tags:** ${p.customTags.map(escapeMd).join(', ')}`, '');
   }
 
+  if (includeStatement(p, opts)) {
+    lines.push('## Problem', '', statementToMarkdown(p.content!), '');
+  }
+
   lines.push(p.solutions.length > 1 ? '## Solutions' : '## Solution', '');
   for (const s of sortedSolutions(p)) {
     const lang = getLanguage(s.language);
@@ -123,6 +128,13 @@ export function problemReadme(p: ProblemRecord, opts: GeneratorOptions): string 
   lines.push('');
 
   return lines.join('\n');
+}
+
+/** Whether the problem description is published in this repository. */
+export function includeStatement(p: ProblemRecord, opts: GeneratorOptions): boolean {
+  if (!opts.settings.includeProblemStatement || !p.content?.trim()) return false;
+  // Premium content stays out of public repositories.
+  return !p.isPaidOnly || opts.isPrivateRepository;
 }
 
 export function problemMetadata(p: ProblemRecord): Record<string, unknown> {
